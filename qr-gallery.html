@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Photo Gallery</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f5f2; --surface:#ffffff; --ink:#1b2a26; --muted:#5d6b66;
+    --line:#d5dcd8; --accent:#0f6b5c; --accent-ink:#ffffff; --danger:#b3321f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#121a18; --surface:#1b2623; --ink:#e8efec; --muted:#9aaaa4;
+      --line:#2f3d39; --accent:#4fc3ad; --accent-ink:#0b1412; --danger:#ff8f7a;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.5 "Avenir Next","Segoe UI",system-ui,sans-serif}
+  main{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+  h1{font-size:1.8rem;line-height:1.2;margin:0 0 4px;letter-spacing:-.01em}
+  p.lead{color:var(--muted);margin:0 0 24px;max-width:60ch}
+  .grid2{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:760px){.grid2{grid-template-columns:1.1fr .9fr}}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+  label{display:block;font-weight:600;margin:0 0 6px}
+  .hint{color:var(--muted);font-size:.875rem;margin:4px 0 14px}
+  input[type=text],input[type=url],textarea{width:100%;padding:10px 12px;border:1px solid var(--line);
+    border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+  textarea{min-height:170px;resize:vertical;font-size:.9rem}
+  :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  button,.btn{font:inherit;font-weight:600;padding:10px 16px;border-radius:8px;border:1px solid var(--accent);
+    background:var(--accent);color:var(--accent-ink);cursor:pointer;text-decoration:none;display:inline-block}
+  button.ghost,.btn.ghost{background:transparent;color:var(--accent)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  #qrBox{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+  #qrCanvas{width:100%;max-width:320px;height:auto;image-rendering:pixelated;border-radius:8px;background:#fff}
+  #qrEmpty{color:var(--muted);padding:60px 10px}
+  .msg{font-size:.875rem;color:var(--muted)}
+  .msg.err{color:var(--danger)}
+  .linkout{word-break:break-all;font-size:.8rem;color:var(--muted);max-height:4.5em;overflow:auto}
+  /* viewer */
+  #viewer{display:none}
+  #viewer h1{margin-bottom:16px}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+  .gallery button{padding:0;border:0;background:var(--line);border-radius:8px;overflow:hidden;aspect-ratio:1;cursor:zoom-in}
+  .gallery img{width:100%;height:100%;object-fit:cover;display:block}
+  #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:10;padding:16px}
+  #lightbox.open{display:flex}
+  #lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+  #lightbox .x{position:absolute;top:12px;right:12px;background:#fff;color:#000;border-color:#fff}
+  #lightbox .nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.9);color:#000;border-color:transparent}
+  #lightbox .prev{left:10px} #lightbox .next{right:10px}
+</style>
+</head>
+<body>
+<main>
+
+  <!-- CREATOR -->
+  <section id="creator">
+    <h1>QR photo gallery</h1>
+    <p class="lead">Add links to your pictures, then get a QR code. Anyone who scans it sees all the pictures in a simple gallery.</p>
+
+    <div class="grid2">
+      <div class="panel">
+        <label for="title">Gallery title</label>
+        <input id="title" type="text" placeholder="Summer trip 2026" maxlength="80">
+        <div class="hint">Optional.</div>
+
+        <label for="urls">Picture links (one per line)</label>
+        <textarea id="urls" placeholder="https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
+        <div class="hint">Use direct image links that anyone can open (.jpg, .png, .webp). Files on your phone or computer must be uploaded somewhere first, for example Imgur, Cloudinary, or your own website.</div>
+
+        <label for="base">Web address of this page</label>
+        <input id="base" type="url" placeholder="https://yourname.github.io/qr-gallery.html">
+        <div class="hint">Host this file online (GitHub Pages, Netlify Drop, your own site) and paste its address here. The QR sends people to this page.</div>
+
+        <div class="row">
+          <button id="make">Create QR code</button>
+          <button id="preview" class="ghost" type="button">Preview gallery</button>
+        </div>
+      </div>
+
+      <div class="panel" id="qrBox">
+        <div id="qrEmpty">Your QR code will appear here.</div>
+        <canvas id="qrCanvas" hidden></canvas>
+        <div id="qrMsg" class="msg" role="status"></div>
+        <div class="row" id="qrActions" hidden>
+          <button id="dl" type="button">Download PNG</button>
+          <button id="copy" class="ghost" type="button">Copy link</button>
+        </div>
+        <div id="linkout" class="linkout"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIEWER -->
+  <section id="viewer">
+    <h1 id="vTitle"></h1>
+    <div class="gallery" id="gallery"></div>
+    <p class="msg" id="vMsg"></p>
+  </section>
+
+</main>
+
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Picture viewer">
+  <button class="x" id="lbClose" aria-label="Close">Close</button>
+  <button class="nav prev" id="lbPrev" aria-label="Previous">&lsaquo;</button>
+  <img id="lbImg" alt="">
+  <button class="nav next" id="lbNext" aria-label="Next">&rsaquo;</button>
+</div>
+
+<script>
+(function(){
+  var $ = function(id){return document.getElementById(id)};
+
+  /* ---------- encoding ---------- */
+  function b64uEnc(bytes){
+    var s=''; for(var i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function b64uDec(str){
+    str=str.replace(/-/g,'+').replace(/_/g,'/'); while(str.length%4) str+='=';
+    var s=atob(str), out=new Uint8Array(s.length);
+    for(var i=0;i<s.length;i++) out[i]=s.charCodeAt(i);
+    return out;
+  }
+  async function pack(obj){
+    var bytes=new TextEncoder().encode(JSON.stringify(obj));
+    var plain='j'+b64uEnc(bytes);
+    if('CompressionStream' in window){
+      try{
+        var cs=new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+        var buf=new Uint8Array(await new Response(cs).arrayBuffer());
+        var z='z'+b64uEnc(buf);
+        return z.length<plain.length?z:plain;
+      }catch(e){}
+    }
+    return plain;
+  }
+  async function unpack(str){
+    var kind=str.charAt(0), bytes=b64uDec(str.slice(1));
+    if(kind==='z'){
+      var ds=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      bytes=new Uint8Array(await new Response(ds).arrayBuffer());
+    }
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  /* ---------- helpers ---------- */
+  function readForm(){
+    var list=$('urls').value.split(/\s+/).map(function(s){return s.trim()}).filter(Boolean);
+    return {t:$('title').value.trim(), i:list};
+  }
+  function baseUrl(){
+    var b=$('base').value.trim();
+    return b.split('#')[0];
+  }
+  async function buildLink(){
+    var data=readForm();
+    if(!data.i.length) throw new Error('Add at least one picture link.');
+    var bad=data.i.filter(function(u){return !/^https?:\/\//i.test(u)});
+    if(bad.length) throw new Error('Every link must start with http:// or https://');
+    var base=baseUrl();
+    if(!/^https?:\/\//i.test(base)) throw new Error('Enter the web address where this page is hosted.');
+    return base+'#g='+await pack(data);
+  }
+
+  /* ---------- QR ---------- */
+  function drawQR(text){
+    var qr=qrcode(0,'L'); qr.addData(text); qr.make();
+    var n=qr.getModuleCount(), scale=Math.max(4,Math.floor(640/(n+8))), quiet=4;
+    var size=(n+quiet*2)*scale, c=$('qrCanvas'), ctx=c.getContext('2d');
+    c.width=c.height=size;
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,size,size);
+    ctx.fillStyle='#000';
+    for(var r=0;r<n;r++) for(var k=0;k<n;k++)
+      if(qr.isDark(r,k)) ctx.fillRect((k+quiet)*scale,(r+quiet)*scale,scale,scale);
+  }
+
+  var lastLink='';
+  $('make').addEventListener('click', async function(){
+    var msg=$('qrMsg'); msg.className='msg'; msg.textContent='';
+    try{
+      if(typeof qrcode==='undefined') throw new Error('QR library did not load. Check your internet connection and reload.');
+      var link=await buildLink();
+      drawQR(link);
+      lastLink=link;
+      $('qrEmpty').hidden=true; $('qrCanvas').hidden=false; $('qrActions').hidden=false;
+      $('linkout').textContent=link;
+      msg.textContent='Scan to test it with your phone.';
+      if(link.length>1200) msg.textContent+=' This code is dense; use fewer or shorter links for easier scanning.';
+    }catch(e){
+      $('qrCanvas').hidden=true; $('qrActions').hidden=true; $('qrEmpty').hidden=false; $('linkout').textContent='';
+      msg.className='msg err';
+      msg.textContent=/overflow|too long|code length/i.test(e.message)
+        ? 'Too many links for one QR code. Remove some, or use shorter links.'
+        : e.message;
+    }
+  });
+  $('dl').addEventListener('click', function(){
+    var a=document.createElement('a'); a.download='gallery-qr.png'; a.href=$('qrCanvas').toDataURL('image/png'); a.click();
+  });
+  $('copy').addEventListener('click', function(){
+    if(navigator.clipboard) navigator.clipboard.writeText(lastLink).then(function(){$('qrMsg').textContent='Link copied.'});
+  });
+  $('preview').addEventListener('click', function(){
+    var d=readForm();
+    if(!d.i.length){ $('qrMsg').className='msg err'; $('qrMsg').textContent='Add at least one picture link.'; return; }
+    showGallery(d);
+  });
+
+  /* ---------- viewer ---------- */
+  var imgs=[], idx=0;
+  function showGallery(d){
+    $('creator').style.display='none'; $('viewer').style.display='block';
+    $('vTitle').textContent=d.t||'Pictures';
+    document.title=d.t||'Pictures';
+    var g=$('gallery'); g.innerHTML=''; imgs=d.i.filter(function(u){return /^https?:\/\//i.test(u)});
+    imgs.forEach(function(u,n){
+      var b=document.createElement('button'); b.setAttribute('aria-label','Open picture '+(n+1));
+      var im=document.createElement('img'); im.loading='lazy'; im.alt='Picture '+(n+1); im.src=u;
+      im.onerror=function(){b.style.display='none'};
+      b.appendChild(im); b.addEventListener('click',function(){open(n)}); g.appendChild(b);
+    });
+    $('vMsg').textContent=imgs.length+(imgs.length===1?' picture':' pictures');
+  }
+  function open(n){ idx=(n+imgs.length)%imgs.length; $('lbImg').src=imgs[idx]; $('lightbox').classList.add('open'); }
+  function close(){ $('lightbox').classList.remove('open'); }
+  $('lbClose').onclick=close;
+  $('lbPrev').onclick=function(e){e.stopPropagation();open(idx-1)};
+  $('lbNext').onclick=function(e){e.stopPropagation();open(idx+1)};
+  $('lightbox').addEventListener('click',function(e){if(e.target===this||e.target.id==='lbImg')close()});
+  document.addEventListener('keydown',function(e){
+    if(!$('lightbox').classList.contains('open')) return;
+    if(e.key==='Escape')close(); if(e.key==='ArrowLeft')open(idx-1); if(e.key==='ArrowRight')open(idx+1);
+  });
+
+  /* ---------- start ---------- */
+  async function route(){
+    var m=location.hash.match(/^#g=(.+)$/);
+    if(m){
+      try{ showGallery(await unpack(m[1])); }
+      catch(e){ $('creator').style.display='none'; $('viewer').style.display='block';
+        $('vTitle').textContent='Gallery not found'; $('vMsg').textContent='This link is damaged or incomplete.'; }
+    }
+  }
+  if(/^https?:$/.test(location.protocol)) $('base').value=location.href.split('#')[0];
+  window.addEventListener('hashchange',route);
+  route();
+})();
+</script>
+</body>
+</html>
